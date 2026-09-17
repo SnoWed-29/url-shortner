@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
-	"strings"
-	"time"
-	"log"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"log"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type Handler struct {
@@ -142,24 +142,8 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Cache the URL
-	cacheTTL := 24 * time.Hour
-
-	if link.ExpiresAt != nil {
-		cacheTTL = time.Until(*link.ExpiresAt)
-
-		if cacheTTL <= 0 {
-			http.Error(w, "link has expired", http.StatusGone)
-			return
-		}
-	}
-
-	if err := h.Redis.Set(
-		ctx,
-		shortCode,
-		link.LongURL,
-		cacheTTL,
-	).Err(); err != nil {
-		log.Printf("redis set failed for %s: %v", shortCode, err)
+	if err := CacheLink(ctx, h.Redis, link); err != nil {
+		LogCacheError("set", shortCode, err)
 	}
 
 	// 6. Redirect
