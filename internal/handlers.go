@@ -10,15 +10,18 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
-	DB *pgxpool.Pool
+	DB    *pgxpool.Pool
+	Redis *redis.Client
 }
 
-func NewHandler(db *pgxpool.Pool) *Handler {
+func NewHandler(db *pgxpool.Pool, redisClient *redis.Client) *Handler {
 	return &Handler{
-		DB: db,
+		DB:    db,
+		Redis: redisClient,
 	}
 }
 

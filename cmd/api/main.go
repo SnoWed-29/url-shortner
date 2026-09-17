@@ -25,7 +25,15 @@ func main() {
 
 	log.Println("connected to PostgreSQL")
 
-	handler := internal.NewHandler(db)
+	redisClient, err := internal.NewRedisClient(config.RedisAddr)
+	if err != nil {
+		log.Fatalf("redis connection failed: %v", err)
+	}
+	defer redisClient.Close()
+
+	log.Println("connected to Redis")
+
+	handler := internal.NewHandler(db, redisClient)
 
 	http.HandleFunc("/api/v1/links", handler.CreateLink)
 	http.HandleFunc("/", handler.Redirect)
