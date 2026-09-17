@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
+	"log"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -103,6 +103,21 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
+	// 1. Try Redis first
+	longURL, err := h.Redis.Get(ctx, shortCode).Result()
+
+	if err == nil {
+		// Cache hit
+		http.Redirect(w, r, longURL, http.StatusFound)
+		return
+	}
+
+	if err != redis.Nil {
+		// Redis is unavailable, but we can still continue with PostgreSQL.
+		log.Printf("redis get failed for %s: %v", shortCode, err)
+	}
+
+	// 2. Redis miss -> PostgreSQL
 	link, err := GetLinkByShortCode(ctx, h.DB, shortCode)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -114,15 +129,39 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 3. Check link status
 	if !link.IsActive {
 		http.Error(w, "link is disabled", http.StatusGone)
 		return
 	}
 
+	// 4. Check expiration
 	if link.ExpiresAt != nil && time.Now().After(*link.ExpiresAt) {
 		http.Error(w, "link has expired", http.StatusGone)
 		return
 	}
 
+	// 5. Cache the URL
+	cacheTTL := 24 * time.Hour
+
+	if link.ExpiresAt != nil {
+		cacheTTL = time.Until(*link.ExpiresAt)
+
+		if cacheTTL <= 0 {
+			http.Error(w, "link has expired", http.StatusGone)
+			return
+		}
+	}
+
+	if err := h.Redis.Set(
+		ctx,
+		shortCode,
+		link.LongURL,
+		cacheTTL,
+	).Err(); err != nil {
+		log.Printf("redis set failed for %s: %v", shortCode, err)
+	}
+
+	// 6. Redirect
 	http.Redirect(w, r, link.LongURL, http.StatusFound)
 }
