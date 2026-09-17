@@ -28,7 +28,7 @@ func main() {
 	handler := internal.NewHandler(db)
 
 	http.HandleFunc("/api/v1/links", handler.CreateLink)
-	
+	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()

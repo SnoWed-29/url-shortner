@@ -71,3 +71,34 @@ func CreateLink(
 
 	return link, nil
 }
+
+func GetLinkByShortCode(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	shortCode string,
+) (Link, error) {
+	var link Link
+
+	err := db.QueryRow(
+		ctx,
+		`
+		SELECT id, short_code, long_url, created_at, expires_at, is_active
+		FROM links
+		WHERE short_code = $1
+		`,
+		shortCode,
+	).Scan(
+		&link.ID,
+		&link.ShortCode,
+		&link.LongURL,
+		&link.CreatedAt,
+		&link.ExpiresAt,
+		&link.IsActive,
+	)
+
+	if err != nil {
+		return Link{}, fmt.Errorf("get link: %w", err)
+	}
+
+	return link, nil
+}

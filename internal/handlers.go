@@ -1,13 +1,15 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
-	"context"
-	
+
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type Handler struct {
@@ -70,4 +72,44 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	shortCode := strings.TrimPrefix(r.URL.Path, "/")
+
+	if shortCode == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	link, err := GetLinkByShortCode(ctx, h.DB, shortCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		http.Error(w, "failed to resolve link", http.StatusInternalServerError)
+		return
+	}
+
+	if !link.IsActive {
+		http.Error(w, "link is disabled", http.StatusGone)
+		return
+	}
+
+	if link.ExpiresAt != nil && time.Now().After(*link.ExpiresAt) {
+		http.Error(w, "link has expired", http.StatusGone)
+		return
+	}
+
+	http.Redirect(w, r, link.LongURL, http.StatusFound)
 }
