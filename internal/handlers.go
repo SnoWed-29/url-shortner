@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
@@ -28,6 +28,8 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var request CreateLinkRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -37,30 +39,38 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 
 	request.URL = strings.TrimSpace(request.URL)
 
-	if request.URL == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
-		return
-	}
-
-	shortCode, err := GenerateShortCode(6)
-	if err != nil {
-		http.Error(w, "failed to generate short code", http.StatusInternalServerError)
+	if err := ValidateURL(request.URL); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	link, err := CreateLink(
-		ctx,
-		h.DB,
-		shortCode,
-		request.URL,
-	)
+	var link Link
 
-	if err != nil {
-		http.Error(w, "failed to create link", http.StatusInternalServerError)
-		return
+	for attempt := 0; attempt < 3; attempt++ {
+		shortCode, err := GenerateShortCode(6)
+		if err != nil {
+			http.Error(w, "failed to generate short code", http.StatusInternalServerError)
+			return
+		}
+
+		link, err = CreateLink(
+			ctx,
+			h.DB,
+			shortCode,
+			request.URL,
+		)
+
+		if err == nil {
+			break
+		}
+
+		if attempt == 2 {
+			http.Error(w, "failed to create unique short code", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	response := map[string]string{
