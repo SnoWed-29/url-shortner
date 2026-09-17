@@ -1,12 +1,12 @@
-package main 
+package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/SnoWed-29/url-shortener/internal"
 	"log"
 	"net/http"
-	"context"
 	"time"
-	"github.com/SnoWed-29/url-shortener/internal"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 	defer db.Close()
 
 	log.Println("connected to PostgreSQL")
-	
+
 	handler := internal.NewHandler(db)
 
 	http.HandleFunc("/api/v1/links", handler.CreateLink)
@@ -35,7 +35,7 @@ func main() {
 
 		if err := db.Ping(ctx); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
-			return 
+			return
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -44,7 +44,6 @@ func main() {
 
 	addr := ":" + config.AppPort
 
-	
 	log.Printf("API Server Listening on %s", addr)
 
 	if err := http.ListenAndServe(addr, nil); err != nil {
