@@ -8,7 +8,9 @@ import (
 	"github.com/SnoWed-29/url-shortener/internal/config"
 	"github.com/SnoWed-29/url-shortener/internal/database"
 	"github.com/SnoWed-29/url-shortener/internal/links"
+	"github.com/SnoWed-29/url-shortener/internal/ratelimit"
 	"github.com/SnoWed-29/url-shortener/internal/users"
+
 	"log"
 	"net/http"
 	"time"
@@ -38,9 +40,17 @@ func main() {
 
 	log.Println("connected to Redis")
 
+	rateLimiter := ratelimit.NewLimiter(redisClient)
 	linkHandler := links.NewHandler(db, redisClient, config.JWTSecret)
 	userHandler := users.Handler{DB: db, JWTSecret: config.JWTSecret}
 	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
+
+	authRateLimit := ratelimit.Middleware(
+		rateLimiter,
+		5,
+		time.Minute,
+	)
+
 	// Routes
 	http.Handle(
 		"POST /api/v1/links",
@@ -66,8 +76,8 @@ func main() {
 		authMiddleware(http.HandlerFunc(linkHandler.UpdateLink)),
 	)
 	http.HandleFunc("/", linkHandler.Redirect)
-	http.HandleFunc("/api/v1/auth/register", userHandler.Register)
-	http.HandleFunc("/api/v1/auth/login", userHandler.Login)
+	http.Handle("/api/v1/auth/register", authRateLimit(http.HandlerFunc(userHandler.Register)))
+	http.Handle("/api/v1/auth/login", authRateLimit(http.HandlerFunc(userHandler.Login)))
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

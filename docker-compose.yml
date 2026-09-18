@@ -34,7 +34,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: url-shortener-api
     ports:
       - "8080:8080"
