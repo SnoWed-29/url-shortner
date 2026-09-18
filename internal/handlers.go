@@ -40,7 +40,7 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	_, ok := GetUserID(r.Context())
+	userID, ok := GetUserID(r.Context())
 
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -85,6 +85,7 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		link, err = CreateLink(
 			ctx,
 			h.DB,
+			userID,
 			request.CustomAlias,
 			request.URL,
 			request.ExpiresAt,
@@ -105,6 +106,7 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 			link, err = CreateLink(
 				ctx,
 				h.DB,
+				userID,
 				shortCode,
 				request.URL,
 				request.ExpiresAt,
@@ -114,8 +116,10 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
+			log.Printf("failed to create link with short_code=%s: %v", shortCode, err)
+
 			if attempt == 2 {
-				http.Error(w, "failed to create unique short code", http.StatusInternalServerError)
+				http.Error(w, "failed to create link", http.StatusInternalServerError)
 				return
 			}
 		}
@@ -308,6 +312,34 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func (h *Handler) ListLinks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
+	userID, ok := GetUserID(r.Context())
+
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	links, err := GetLinksByUserID(ctx, h.DB, userID)
+	if err != nil {
+		log.Printf("failed to get links for user %d: %v", userID, err)
+		http.Error(w, "failed to get links", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(links); err != nil {
+		log.Printf("failed to encode links response: %v", err)
+	}
+}
 
 
