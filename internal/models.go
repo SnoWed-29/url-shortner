@@ -16,3 +16,20 @@ type CreateLinkRequest struct {
 	CustomAlias string     `json:"custom_alias,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
+
+type User struct {
+	ID           int64     `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
