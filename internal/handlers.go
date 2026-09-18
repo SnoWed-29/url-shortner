@@ -344,3 +344,44 @@ func (h *Handler) ListLinks(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to encode links response: %v", err)
 	}
 }
+
+func (h *Handler) DeleteLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	shortCode := strings.TrimPrefix(r.URL.Path, "/api/v1/links/")
+
+	if shortCode == "" {
+		http.Error(w, "short code is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	err := links.DisableLink(ctx, h.DB, userID, shortCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		log.Printf("failed to disable link %s: %v", shortCode, err)
+		http.Error(w, "failed to disable link", http.StatusInternalServerError)
+		return
+	}
+
+	if err := DeleteCachedLink(ctx, h.Redis, shortCode); err != nil {
+		LogCacheError("delete", shortCode, err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

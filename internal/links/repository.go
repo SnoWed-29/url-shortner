@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -142,4 +143,33 @@ func GetLinksByUserID(
 	}
 
 	return links, nil
+}
+
+func DisableLink(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+) error {
+	result, err := db.Exec(
+		ctx,
+		`
+		UPDATE links
+		SET is_active = FALSE
+		WHERE user_id = $1
+		  AND short_code = $2
+		  AND is_active = TRUE
+		`,
+		userID,
+		shortCode,
+	)
+	if err != nil {
+		return fmt.Errorf("disable link: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
 }
