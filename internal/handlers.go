@@ -385,3 +385,49 @@ func (h *Handler) DeleteLink(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *Handler) GetLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	shortCode := strings.TrimPrefix(r.URL.Path, "/api/v1/links/")
+
+	if shortCode == "" {
+		http.Error(w, "short code is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	link, err := links.GetLinkByUserIDAndShortCode(
+		ctx,
+		h.DB,
+		userID,
+		shortCode,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		log.Printf("failed to get link %s: %v", shortCode, err)
+		http.Error(w, "failed to get link", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(link); err != nil {
+		log.Printf("failed to encode link %s: %v", shortCode, err)
+	}
+}

@@ -173,3 +173,45 @@ func DisableLink(
 
 	return nil
 }
+
+func GetLinkByUserIDAndShortCode(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+) (Link, error) {
+	var link Link
+
+	err := db.QueryRow(
+		ctx,
+		`
+        SELECT
+            id,
+            user_id,
+            short_code,
+            long_url,
+            created_at,
+            expires_at,
+            is_active
+        FROM links
+        WHERE user_id = $1
+          AND short_code = $2
+        `,
+		userID,
+		shortCode,
+	).Scan(
+		&link.ID,
+		&link.UserID,
+		&link.ShortCode,
+		&link.LongURL,
+		&link.CreatedAt,
+		&link.ExpiresAt,
+		&link.IsActive,
+	)
+
+	if err != nil {
+		return Link{}, fmt.Errorf("get link: %w", err)
+	}
+
+	return link, nil
+}
