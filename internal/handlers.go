@@ -33,8 +33,17 @@ func NewHandler(
 }
 
 func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
+
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	_, ok := GetUserID(r.Context())
+
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -298,3 +307,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+
+
+

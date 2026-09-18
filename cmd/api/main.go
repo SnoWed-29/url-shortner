@@ -34,8 +34,12 @@ func main() {
 	log.Println("connected to Redis")
 
 	handler := internal.NewHandler(db, redisClient, config.JWTSecret)
+	authMiddleware := internal.AuthMiddleware(config.JWTSecret)
 
-	http.HandleFunc("/api/v1/links", handler.CreateLink)
+	http.Handle(
+		"/api/v1/links",
+		authMiddleware(http.HandlerFunc(handler.CreateLink)),
+	)
 	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/api/v1/auth/register", handler.Register)
 	http.HandleFunc("/api/v1/auth/login", handler.Login)
