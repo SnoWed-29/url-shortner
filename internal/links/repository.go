@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -142,4 +143,105 @@ func GetLinksByUserID(
 	}
 
 	return links, nil
+}
+
+func DisableLink(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+) error {
+	result, err := db.Exec(
+		ctx,
+		`
+		UPDATE links
+		SET is_active = FALSE
+		WHERE user_id = $1
+		  AND short_code = $2
+		  AND is_active = TRUE
+		`,
+		userID,
+		shortCode,
+	)
+	if err != nil {
+		return fmt.Errorf("disable link: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
+}
+
+func GetLinkByUserIDAndShortCode(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+) (Link, error) {
+	var link Link
+
+	err := db.QueryRow(
+		ctx,
+		`
+        SELECT
+            id,
+            user_id,
+            short_code,
+            long_url,
+            created_at,
+            expires_at,
+            is_active
+        FROM links
+        WHERE user_id = $1
+          AND short_code = $2
+        `,
+		userID,
+		shortCode,
+	).Scan(
+		&link.ID,
+		&link.UserID,
+		&link.ShortCode,
+		&link.LongURL,
+		&link.CreatedAt,
+		&link.ExpiresAt,
+		&link.IsActive,
+	)
+
+	if err != nil {
+		return Link{}, fmt.Errorf("get link: %w", err)
+	}
+
+	return link, nil
+}
+
+func UpdateLinkExpiration(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+	expiresAt *time.Time,
+) error {
+	result, err := db.Exec(
+		ctx,
+		`
+		UPDATE links
+		SET expires_at = $1
+		WHERE user_id = $2
+		  AND short_code = $3
+		`,
+		expiresAt,
+		userID,
+		shortCode,
+	)
+	if err != nil {
+		return fmt.Errorf("update link expiration: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
 }

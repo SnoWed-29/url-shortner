@@ -39,7 +39,7 @@ func main() {
 
 	handler := internal.NewHandler(db, redisClient, config.JWTSecret)
 	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
-
+	// Routes
 	http.Handle(
 		"POST /api/v1/links",
 		authMiddleware(http.HandlerFunc(handler.CreateLink)),
@@ -50,6 +50,19 @@ func main() {
 		authMiddleware(http.HandlerFunc(handler.ListLinks)),
 	)
 
+	http.Handle(
+		"DELETE /api/v1/links/",
+		authMiddleware(http.HandlerFunc(handler.DeleteLink)),
+	)
+
+	http.Handle(
+		"GET /api/v1/links/",
+		authMiddleware(http.HandlerFunc(handler.GetLink)),
+	)
+	http.Handle(
+		"PATCH /api/v1/links/",
+		authMiddleware(http.HandlerFunc(handler.UpdateLink)),
+	)
 	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/api/v1/auth/register", handler.Register)
 	http.HandleFunc("/api/v1/auth/login", handler.Login)
