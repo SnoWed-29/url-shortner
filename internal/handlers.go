@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 type Handler struct {
@@ -47,32 +48,61 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if request.CustomAlias != "" {
+		if err := ValidateCustomAlias(request.CustomAlias); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if request.ExpiresAt != nil && request.ExpiresAt.Before(time.Now()) {
+		http.Error(w, "expiration time must be in the future", http.StatusBadRequest)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
 	var link Link
+	var err error
 
-	for attempt := 0; attempt < 3; attempt++ {
-		shortCode, err := GenerateShortCode(6)
-		if err != nil {
-			http.Error(w, "failed to generate short code", http.StatusInternalServerError)
-			return
-		}
-
+	if request.CustomAlias != "" {
 		link, err = CreateLink(
 			ctx,
 			h.DB,
-			shortCode,
+			request.CustomAlias,
 			request.URL,
+			request.ExpiresAt,
 		)
 
-		if err == nil {
-			break
-		}
-
-		if attempt == 2 {
-			http.Error(w, "failed to create unique short code", http.StatusInternalServerError)
+		if err != nil {
+			http.Error(w, "custom alias is already in use", http.StatusConflict)
 			return
+		}
+	} else {
+		for attempt := 0; attempt < 3; attempt++ {
+			shortCode, err := GenerateShortCode(6)
+			if err != nil {
+				http.Error(w, "failed to generate short code", http.StatusInternalServerError)
+				return
+			}
+
+			link, err = CreateLink(
+				ctx,
+				h.DB,
+				shortCode,
+				request.URL,
+				request.ExpiresAt,
+			)
+
+			if err == nil {
+				break
+			}
+
+			if attempt == 2 {
+				http.Error(w, "failed to create unique short code", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
@@ -96,8 +126,13 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	shortCode := strings.TrimPrefix(r.URL.Path, "/")
 
 	if shortCode == "" {
-		http.NotFound(w, r)
-		return
+		var err error
+
+		shortCode, err = GenerateShortCode(6)
+		if err != nil {
+			http.Error(w, "failed to generate short code", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

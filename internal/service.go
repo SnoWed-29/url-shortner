@@ -51,3 +51,27 @@ func ValidateURL(rawURL string) error {
 
 	return nil
 }
+
+func ValidateCustomAlias(alias string) error {
+	alias = strings.TrimSpace(alias)
+
+	if alias == "" {
+		return fmt.Errorf("custom alias cannot be empty")
+	}
+
+	if len(alias) < 3 || len(alias) > 16 {
+		return fmt.Errorf("custom alias must be between 3 and 16 characters")
+	}
+
+	for _, char := range alias {
+		validChar := (char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '-' || char == '_'
+		if !validChar {
+			return fmt.Errorf("custom alias can only contain letters, numbers, '-' and '_'")
+		}
+	}
+
+	return nil
+}
