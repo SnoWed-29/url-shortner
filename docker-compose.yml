@@ -21,6 +21,23 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: url-shortener-api
+    ports:
+      - "8080:8080"
+    environment:
+      APP_PORT: 8080
+      POSTGRES_DSN: postgres://postgres:postgres@postgres:5432/urlshortener?sslmode=disable
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: change-me
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

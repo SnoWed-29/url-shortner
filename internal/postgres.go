@@ -39,23 +39,36 @@ func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 
 	return pool, nil
 }
+
 func CreateLink(
 	ctx context.Context,
 	db *pgxpool.Pool,
 	shortCode string,
 	longURL string,
+	expiresAt *time.Time,
 ) (Link, error) {
 	var link Link
 
 	err := db.QueryRow(
 		ctx,
 		`
-		INSERT INTO links (short_code, long_url)
-		VALUES ($1, $2)
-		RETURNING id, short_code, long_url, created_at, expires_at, is_active
+		INSERT INTO links (
+			short_code,
+			long_url,
+			expires_at
+		)
+		VALUES ($1, $2, $3)
+		RETURNING
+			id,
+			short_code,
+			long_url,
+			created_at,
+			expires_at,
+			is_active
 		`,
 		shortCode,
 		longURL,
+		expiresAt,
 	).Scan(
 		&link.ID,
 		&link.ShortCode,
