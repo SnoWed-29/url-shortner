@@ -59,6 +59,10 @@ func main() {
 		"GET /api/v1/links/",
 		authMiddleware(http.HandlerFunc(handler.GetLink)),
 	)
+	http.Handle(
+		"PATCH /api/v1/links/",
+		authMiddleware(http.HandlerFunc(handler.UpdateLink)),
+	)
 	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/api/v1/auth/register", handler.Register)
 	http.HandleFunc("/api/v1/auth/login", handler.Login)

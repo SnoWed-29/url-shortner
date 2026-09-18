@@ -431,3 +431,63 @@ func (h *Handler) GetLink(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to encode link %s: %v", shortCode, err)
 	}
 }
+
+func (h *Handler) UpdateLink(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	shortCode := strings.TrimPrefix(r.URL.Path, "/api/v1/links/")
+
+	if shortCode == "" {
+		http.Error(w, "short code is required", http.StatusBadRequest)
+		return
+	}
+
+	var req links.UpdateLinkRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.ExpiresAt != nil && !req.ExpiresAt.After(time.Now()) {
+		http.Error(w, "expiration must be in the future", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	err := links.UpdateLinkExpiration(
+		ctx,
+		h.DB,
+		userID,
+		shortCode,
+		req.ExpiresAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+
+		log.Printf("failed to update link %s: %v", shortCode, err)
+		http.Error(w, "failed to update link", http.StatusInternalServerError)
+		return
+	}
+
+	// Remove the cached URL so the next redirect fetches fresh data.
+	if err := DeleteCachedLink(ctx, h.Redis, shortCode); err != nil {
+		LogCacheError("delete", shortCode, err)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

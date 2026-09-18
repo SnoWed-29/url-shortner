@@ -27,3 +27,7 @@ type CreateLinkRequest struct {
 	CustomAlias string     `json:"custom_alias,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
+
+type UpdateLinkRequest struct {
+	ExpiresAt *time.Time `json:"expires_at"`
+}

@@ -215,3 +215,33 @@ func GetLinkByUserIDAndShortCode(
 
 	return link, nil
 }
+
+func UpdateLinkExpiration(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	shortCode string,
+	expiresAt *time.Time,
+) error {
+	result, err := db.Exec(
+		ctx,
+		`
+		UPDATE links
+		SET expires_at = $1
+		WHERE user_id = $2
+		  AND short_code = $3
+		`,
+		expiresAt,
+		userID,
+		shortCode,
+	)
+	if err != nil {
+		return fmt.Errorf("update link expiration: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	return nil
+}
