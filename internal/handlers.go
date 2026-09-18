@@ -15,20 +15,35 @@ import (
 )
 
 type Handler struct {
-	DB    *pgxpool.Pool
-	Redis *redis.Client
+	DB        *pgxpool.Pool
+	Redis     *redis.Client
+	JWTSecret string
 }
 
-func NewHandler(db *pgxpool.Pool, redisClient *redis.Client) *Handler {
+func NewHandler(
+	db *pgxpool.Pool,
+	redisClient *redis.Client,
+	jwtSecret string,
+) *Handler {
 	return &Handler{
-		DB:    db,
-		Redis: redisClient,
+		DB:        db,
+		Redis:     redisClient,
+		JWTSecret: jwtSecret,
 	}
 }
 
 func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
+
+	
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	_, ok := GetUserID(r.Context())
+
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -184,3 +199,115 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	// 6. Redirect
 	http.Redirect(w, r, link.LongURL, http.StatusFound)
 }
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	var request RegisterRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	email := NormalizeEmail(request.Email)
+
+	if email == "" {
+		http.Error(w, "email is required", http.StatusBadRequest)
+		return
+	}
+
+	passwordHash, err := HashPassword(request.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	user, err := CreateUser(
+		ctx,
+		h.DB,
+		email,
+		passwordHash,
+	)
+	if err != nil {
+		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"id":         user.ID,
+		"email":      user.Email,
+		"created_at": user.CreatedAt,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	json.NewEncoder(w).Encode(response)
+}
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
+	var request LoginRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	email := NormalizeEmail(request.Email)
+
+	if email == "" || request.Password == "" {
+		http.Error(w, "email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+
+	user, err := GetUserByEmail(ctx, h.DB, email)
+	if err != nil {
+		// Don't reveal whether the email exists.
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	if !CheckPassword(request.Password, user.PasswordHash) {
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := GenerateJWT(user.ID, h.JWTSecret)
+	if err != nil {
+		http.Error(w, "failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"token": token,
+		"user": map[string]interface{}{
+			"id":    user.ID,
+			"email": user.Email,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+
+
+
