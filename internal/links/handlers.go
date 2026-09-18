@@ -1,4 +1,4 @@
-package internal
+package links
 
 import (
 	"context"
@@ -10,9 +10,6 @@ import (
 	"time"
 
 	"github.com/SnoWed-29/url-shortener/internal/auth"
-	"github.com/SnoWed-29/url-shortener/internal/cache"
-	"github.com/SnoWed-29/url-shortener/internal/links"
-	"github.com/SnoWed-29/url-shortener/internal/users"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -52,7 +49,7 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	var request links.CreateLinkRequest
+	var request CreateLinkRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -61,13 +58,13 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 
 	request.URL = strings.TrimSpace(request.URL)
 
-	if err := links.ValidateURL(request.URL); err != nil {
+	if err := ValidateURL(request.URL); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if request.CustomAlias != "" {
-		if err := links.ValidateCustomAlias(request.CustomAlias); err != nil {
+		if err := ValidateCustomAlias(request.CustomAlias); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -81,11 +78,11 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	var link links.Link
+	var link Link
 	var err error
 
 	if request.CustomAlias != "" {
-		link, err = links.CreateLink(
+		link, err = CreateLink(
 			ctx,
 			h.DB,
 			userID,
@@ -100,13 +97,13 @@ func (h *Handler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		for attempt := 0; attempt < 3; attempt++ {
-			shortCode, err := links.GenerateShortCode(6)
+			shortCode, err := GenerateShortCode(6)
 			if err != nil {
 				http.Error(w, "failed to generate short code", http.StatusInternalServerError)
 				return
 			}
 
-			link, err = links.CreateLink(
+			link, err = CreateLink(
 				ctx,
 				h.DB,
 				userID,
@@ -150,7 +147,7 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	if shortCode == "" {
 		var err error
 
-		shortCode, err = links.GenerateShortCode(6)
+		shortCode, err = GenerateShortCode(6)
 		if err != nil {
 			http.Error(w, "failed to generate short code", http.StatusInternalServerError)
 			return
@@ -175,7 +172,7 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Redis miss -> PostgreSQL
-	link, err := links.GetLinkByShortCode(ctx, h.DB, shortCode)
+	link, err := GetLinkByShortCode(ctx, h.DB, shortCode)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.NotFound(w, r)
@@ -199,120 +196,12 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. Cache the URL
-	if err := cache.CacheLink(ctx, h.Redis, link); err != nil {
-		cache.LogCacheError("set", shortCode, err)
+	if err := CacheLink(ctx, h.Redis, link); err != nil {
+		LogCacheError("set", shortCode, err)
 	}
 
 	// 6. Redirect
 	http.Redirect(w, r, link.LongURL, http.StatusFound)
-}
-
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-
-	var request users.RegisterRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	email := auth.NormalizeEmail(request.Email)
-
-	if email == "" {
-		http.Error(w, "email is required", http.StatusBadRequest)
-		return
-	}
-
-	passwordHash, err := auth.HashPassword(request.Password)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	user, err := users.CreateUser(
-		ctx,
-		h.DB,
-		email,
-		passwordHash,
-	)
-	if err != nil {
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"id":         user.ID,
-		"email":      user.Email,
-		"created_at": user.CreatedAt,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
-	json.NewEncoder(w).Encode(response)
-}
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-
-	var request users.LoginRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	email := auth.NormalizeEmail(request.Email)
-
-	if email == "" || request.Password == "" {
-		http.Error(w, "email and password are required", http.StatusBadRequest)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-
-	user, err := users.GetUserByEmail(ctx, h.DB, email)
-	if err != nil {
-		// Don't reveal whether the email exists.
-		http.Error(w, "invalid email or password", http.StatusUnauthorized)
-		return
-	}
-
-	if !auth.CheckPassword(request.Password, user.PasswordHash) {
-		http.Error(w, "invalid email or password", http.StatusUnauthorized)
-		return
-	}
-
-	token, err := auth.GenerateJWT(user.ID, h.JWTSecret)
-	if err != nil {
-		http.Error(w, "failed to generate token", http.StatusInternalServerError)
-		return
-	}
-
-	response := map[string]interface{}{
-		"token": token,
-		"user": map[string]interface{}{
-			"id":    user.ID,
-			"email": user.Email,
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
 }
 
 func (h *Handler) ListLinks(w http.ResponseWriter, r *http.Request) {
@@ -331,7 +220,7 @@ func (h *Handler) ListLinks(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	links, err := links.GetLinksByUserID(ctx, h.DB, userID)
+	links, err := GetLinksByUserID(ctx, h.DB, userID)
 	if err != nil {
 		log.Printf("failed to get links for user %d: %v", userID, err)
 		http.Error(w, "failed to get links", http.StatusInternalServerError)
@@ -351,7 +240,7 @@ func (h *Handler) DeleteLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := GetUserID(r.Context())
+	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -367,7 +256,7 @@ func (h *Handler) DeleteLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	err := links.DisableLink(ctx, h.DB, userID, shortCode)
+	err := DisableLink(ctx, h.DB, userID, shortCode)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.NotFound(w, r)
@@ -392,7 +281,7 @@ func (h *Handler) GetLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := GetUserID(r.Context())
+	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -408,7 +297,7 @@ func (h *Handler) GetLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	link, err := links.GetLinkByUserIDAndShortCode(
+	link, err := GetLinkByUserIDAndShortCode(
 		ctx,
 		h.DB,
 		userID,
@@ -438,7 +327,7 @@ func (h *Handler) UpdateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := GetUserID(r.Context())
+	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -451,7 +340,7 @@ func (h *Handler) UpdateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req links.UpdateLinkRequest
+	var req UpdateLinkRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -466,7 +355,7 @@ func (h *Handler) UpdateLink(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	err := links.UpdateLinkExpiration(
+	err := UpdateLinkExpiration(
 		ctx,
 		h.DB,
 		userID,
