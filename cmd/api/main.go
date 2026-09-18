@@ -4,6 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/SnoWed-29/url-shortener/internal"
+	"github.com/SnoWed-29/url-shortener/internal/auth"
+	"github.com/SnoWed-29/url-shortener/internal/cache"
+	"github.com/SnoWed-29/url-shortener/internal/config"
+	"github.com/SnoWed-29/url-shortener/internal/database"
 	"log"
 	"net/http"
 	"time"
@@ -11,12 +15,12 @@ import (
 
 func main() {
 
-	config := internal.LoadConfig()
+	config := config.LoadConfig()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	db, err := internal.NewPostgresPool(ctx, config.PostgresDSN)
+	db, err := database.NewPostgresPool(ctx, config.PostgresDSN)
 
 	if err != nil {
 		log.Fatalf("database connection failed: %v", err)
@@ -25,7 +29,7 @@ func main() {
 
 	log.Println("connected to PostgreSQL")
 
-	redisClient, err := internal.NewRedisClient(config.RedisAddr)
+	redisClient, err := cache.NewRedisClient(config.RedisAddr)
 	if err != nil {
 		log.Fatalf("redis connection failed: %v", err)
 	}
@@ -34,7 +38,7 @@ func main() {
 	log.Println("connected to Redis")
 
 	handler := internal.NewHandler(db, redisClient, config.JWTSecret)
-	authMiddleware := internal.AuthMiddleware(config.JWTSecret)
+	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
 
 	http.Handle(
 		"POST /api/v1/links",
