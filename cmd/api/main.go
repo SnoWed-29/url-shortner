@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/SnoWed-29/url-shortener/internal"
 	"github.com/SnoWed-29/url-shortener/internal/auth"
 	"github.com/SnoWed-29/url-shortener/internal/cache"
 	"github.com/SnoWed-29/url-shortener/internal/config"
 	"github.com/SnoWed-29/url-shortener/internal/database"
+	"github.com/SnoWed-29/url-shortener/internal/links"
+	"github.com/SnoWed-29/url-shortener/internal/users"
 	"log"
 	"net/http"
 	"time"
@@ -37,35 +38,36 @@ func main() {
 
 	log.Println("connected to Redis")
 
-	handler := internal.NewHandler(db, redisClient, config.JWTSecret)
+	linkHandler := links.NewHandler(db, redisClient, config.JWTSecret)
+	userHandler := users.Handler{DB: db, JWTSecret: config.JWTSecret}
 	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
 	// Routes
 	http.Handle(
 		"POST /api/v1/links",
-		authMiddleware(http.HandlerFunc(handler.CreateLink)),
+		authMiddleware(http.HandlerFunc(linkHandler.CreateLink)),
 	)
 
 	http.Handle(
 		"GET /api/v1/links",
-		authMiddleware(http.HandlerFunc(handler.ListLinks)),
+		authMiddleware(http.HandlerFunc(linkHandler.ListLinks)),
 	)
 
 	http.Handle(
 		"DELETE /api/v1/links/",
-		authMiddleware(http.HandlerFunc(handler.DeleteLink)),
+		authMiddleware(http.HandlerFunc(linkHandler.DeleteLink)),
 	)
 
 	http.Handle(
 		"GET /api/v1/links/",
-		authMiddleware(http.HandlerFunc(handler.GetLink)),
+		authMiddleware(http.HandlerFunc(linkHandler.GetLink)),
 	)
 	http.Handle(
 		"PATCH /api/v1/links/",
-		authMiddleware(http.HandlerFunc(handler.UpdateLink)),
+		authMiddleware(http.HandlerFunc(linkHandler.UpdateLink)),
 	)
-	http.HandleFunc("/", handler.Redirect)
-	http.HandleFunc("/api/v1/auth/register", handler.Register)
-	http.HandleFunc("/api/v1/auth/login", handler.Login)
+	http.HandleFunc("/", linkHandler.Redirect)
+	http.HandleFunc("/api/v1/auth/register", userHandler.Register)
+	http.HandleFunc("/api/v1/auth/login", userHandler.Login)
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
