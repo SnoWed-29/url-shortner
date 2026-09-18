@@ -12,7 +12,7 @@ type link struct {
 }
 
 type CreateLinkRequest struct {
-	URL string `json:"URL"`
+	URL         string     `json:"URL"`
 	CustomAlias string     `json:"custom_alias,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }

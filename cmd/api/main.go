@@ -33,12 +33,13 @@ func main() {
 
 	log.Println("connected to Redis")
 
-	handler := internal.NewHandler(db, redisClient)
+	handler := internal.NewHandler(db, redisClient, config.JWTSecret)
 
 	http.HandleFunc("/api/v1/links", handler.CreateLink)
 	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/api/v1/auth/register", handler.Register)
-	
+	http.HandleFunc("/api/v1/auth/login", handler.Login)
+
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
