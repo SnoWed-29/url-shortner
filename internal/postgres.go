@@ -10,6 +10,7 @@ import (
 
 type Link struct {
 	ID        int64
+	UserID    *int64     
 	ShortCode string
 	LongURL   string
 	CreatedAt time.Time
@@ -43,6 +44,7 @@ func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 func CreateLink(
 	ctx context.Context,
 	db *pgxpool.Pool,
+	userID int64,
 	shortCode string,
 	longURL string,
 	expiresAt *time.Time,
@@ -53,24 +55,28 @@ func CreateLink(
 		ctx,
 		`
 		INSERT INTO links (
+			user_id,
 			short_code,
 			long_url,
 			expires_at
 		)
-		VALUES ($1, $2, $3)
+		VALUES ($1, $2, $3, $4)
 		RETURNING
 			id,
+			user_id,
 			short_code,
 			long_url,
 			created_at,
 			expires_at,
 			is_active
 		`,
+		userID,
 		shortCode,
 		longURL,
 		expiresAt,
 	).Scan(
 		&link.ID,
+		&link.UserID,
 		&link.ShortCode,
 		&link.LongURL,
 		&link.CreatedAt,
@@ -177,4 +183,59 @@ func GetUserByEmail(
 	}
 
 	return user, nil
+}
+
+func GetLinksByUserID(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+) ([]Link, error) {
+	rows, err := db.Query(
+		ctx,
+		`
+		SELECT
+			id,
+			user_id,
+			short_code,
+			long_url,
+			created_at,
+			expires_at,
+			is_active
+		FROM links
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get links by user: %w", err)
+	}
+	defer rows.Close()
+
+	links := make([]Link, 0)
+
+	for rows.Next() {
+		var link Link
+
+		err := rows.Scan(
+			&link.ID,
+			&link.UserID,
+			&link.ShortCode,
+			&link.LongURL,
+			&link.CreatedAt,
+			&link.ExpiresAt,
+			&link.IsActive,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan link: %w", err)
+		}
+
+		links = append(links, link)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate links: %w", err)
+	}
+
+	return links, nil
 }

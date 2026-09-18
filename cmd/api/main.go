@@ -37,9 +37,15 @@ func main() {
 	authMiddleware := internal.AuthMiddleware(config.JWTSecret)
 
 	http.Handle(
-		"/api/v1/links",
+		"POST /api/v1/links",
 		authMiddleware(http.HandlerFunc(handler.CreateLink)),
 	)
+
+	http.Handle(
+		"GET /api/v1/links",
+		authMiddleware(http.HandlerFunc(handler.ListLinks)),
+	)
+
 	http.HandleFunc("/", handler.Redirect)
 	http.HandleFunc("/api/v1/auth/register", handler.Register)
 	http.HandleFunc("/api/v1/auth/login", handler.Login)
