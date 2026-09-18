@@ -1,4 +1,4 @@
-package internal
+package auth
 
 import (
 	"context"
@@ -72,7 +72,6 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 		})
 	}
 }
-
 
 func GetUserID(ctx context.Context) (int64, bool) {
 	userID, ok := ctx.Value(userIDContextKey).(int64)

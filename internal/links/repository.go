@@ -1,4 +1,4 @@
-package internal
+package links
 
 import (
 	"context"
@@ -7,39 +7,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type Link struct {
-	ID        int64
-	UserID    *int64     
-	ShortCode string
-	LongURL   string
-	CreatedAt time.Time
-	ExpiresAt *time.Time
-	IsActive  bool
-}
-
-func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	config, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("parse postgres config: %w", err)
-	}
-
-	config.MaxConns = 10
-	config.MinConns = 2
-	config.MaxConnLifetime = 30 * time.Minute
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, fmt.Errorf("create postgres pool: %w", err)
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("ping postgres: %w", err)
-	}
-
-	return pool, nil
-}
 
 func CreateLink(
 	ctx context.Context,
@@ -120,69 +87,6 @@ func GetLinkByShortCode(
 	}
 
 	return link, nil
-}
-
-func CreateUser(
-	ctx context.Context,
-	db *pgxpool.Pool,
-	email string,
-	passwordHash string,
-) (User, error) {
-	var user User
-
-	err := db.QueryRow(
-		ctx,
-		`
-		INSERT INTO users (
-			email,
-			password_hash
-		)
-		VALUES ($1, $2)
-		RETURNING id, email, password_hash, created_at
-		`,
-		email,
-		passwordHash,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.CreatedAt,
-	)
-
-	if err != nil {
-		return User{}, fmt.Errorf("create user: %w", err)
-	}
-
-	return user, nil
-}
-
-func GetUserByEmail(
-	ctx context.Context,
-	db *pgxpool.Pool,
-	email string,
-) (User, error) {
-	var user User
-
-	err := db.QueryRow(
-		ctx,
-		`
-		SELECT id, email, password_hash, created_at
-		FROM users
-		WHERE email = $1
-		`,
-		email,
-	).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.CreatedAt,
-	)
-
-	if err != nil {
-		return User{}, fmt.Errorf("get user: %w", err)
-	}
-
-	return user, nil
 }
 
 func GetLinksByUserID(

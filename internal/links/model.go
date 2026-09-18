@@ -1,4 +1,4 @@
-package internal
+package links
 
 import "time"
 
@@ -12,25 +12,18 @@ type link struct {
 	IsActive  bool       `json:"is_active"`
 }
 
+type Link struct {
+	ID        int64
+	UserID    *int64
+	ShortCode string
+	LongURL   string
+	CreatedAt time.Time
+	ExpiresAt *time.Time
+	IsActive  bool
+}
+
 type CreateLinkRequest struct {
 	URL         string     `json:"URL"`
 	CustomAlias string     `json:"custom_alias,omitempty"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-}
-
-type User struct {
-	ID           int64     `json:"id"`
-	Email        string    `json:"email"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
 }
