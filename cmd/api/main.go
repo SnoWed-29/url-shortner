@@ -44,8 +44,10 @@ func main() {
 	rateLimiter := ratelimit.NewLimiter(redisClient)
 	linkHandler := links.NewHandler(db, redisClient, config.JWTSecret)
 	userHandler := users.Handler{DB: db, JWTSecret: config.JWTSecret}
-	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
-	apiKeyMiddleware := apikeys.Middleware(db)
+	apiKeyAuthenticator := func(ctx context.Context, rawKey string) (int64, error) {
+		return apikeys.Authenticate(ctx, db, rawKey)
+	}
+	authMiddleware := auth.UnifiedMiddleware(config.JWTSecret, apiKeyAuthenticator)
 
 	authRateLimit := ratelimit.Middleware(
 		rateLimiter,
@@ -61,11 +63,6 @@ func main() {
 	http.Handle(
 		"POST /api/v1/links",
 		authMiddleware(http.HandlerFunc(linkHandler.CreateLink)),
-	)
-
-	http.Handle(
-		"POST /api/v1/links/api-key",
-		apiKeyMiddleware(http.HandlerFunc(linkHandler.CreateLink)),
 	)
 
 	http.Handle(
@@ -93,6 +90,16 @@ func main() {
 	http.Handle(
 		"POST /api/v1/api-keys",
 		authMiddleware(http.HandlerFunc(apiKeyHandler.Create)),
+	)
+
+	http.Handle(
+		"GET /api/v1/api-keys",
+		authMiddleware(http.HandlerFunc(apiKeyHandler.List)),
+	)
+
+	http.Handle(
+		"DELETE /api/v1/api-keys/",
+		authMiddleware(http.HandlerFunc(apiKeyHandler.Delete)),
 	)
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

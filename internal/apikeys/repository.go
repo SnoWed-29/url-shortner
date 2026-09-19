@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -102,6 +103,81 @@ func UpdateLastUsed(
 
 	if err != nil {
 		return fmt.Errorf("update api key usage: %w", err)
+	}
+
+	return nil
+}
+
+func GetAPIKeysByUserID(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+) ([]APIKey, error) {
+	rows, err := db.Query(
+		ctx,
+		`
+		SELECT
+			id,
+			name,
+			created_at,
+			last_used_at
+		FROM api_keys
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+		`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get api keys by user: %w", err)
+	}
+	defer rows.Close()
+
+	keys := make([]APIKey, 0)
+
+	for rows.Next() {
+		var key APIKey
+
+		if err := rows.Scan(
+			&key.ID,
+			&key.Name,
+			&key.CreatedAt,
+			&key.LastUsedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan api key: %w", err)
+		}
+
+		keys = append(keys, key)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate api keys: %w", err)
+	}
+
+	return keys, nil
+}
+
+func DeleteAPIKey(
+	ctx context.Context,
+	db *pgxpool.Pool,
+	userID int64,
+	id int64,
+) error {
+	result, err := db.Exec(
+		ctx,
+		`
+		DELETE FROM api_keys
+		WHERE id = $1
+		  AND user_id = $2
+		`,
+		id,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("delete api key: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
 	}
 
 	return nil
