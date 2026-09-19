@@ -62,15 +62,15 @@ func AuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 
 			userID := int64(userIDFloat)
 
-			ctx := context.WithValue(
-				r.Context(),
-				userIDContextKey,
-				userID,
-			)
+			ctx := SetUserID(r.Context(), userID)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func SetUserID(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, userIDContextKey, userID)
 }
 
 func GetUserID(ctx context.Context) (int64, bool) {

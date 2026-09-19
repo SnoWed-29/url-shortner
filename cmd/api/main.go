@@ -45,6 +45,7 @@ func main() {
 	linkHandler := links.NewHandler(db, redisClient, config.JWTSecret)
 	userHandler := users.Handler{DB: db, JWTSecret: config.JWTSecret}
 	authMiddleware := auth.AuthMiddleware(config.JWTSecret)
+	apiKeyMiddleware := apikeys.Middleware(db)
 
 	authRateLimit := ratelimit.Middleware(
 		rateLimiter,
@@ -60,6 +61,11 @@ func main() {
 	http.Handle(
 		"POST /api/v1/links",
 		authMiddleware(http.HandlerFunc(linkHandler.CreateLink)),
+	)
+
+	http.Handle(
+		"POST /api/v1/links/api-key",
+		apiKeyMiddleware(http.HandlerFunc(linkHandler.CreateLink)),
 	)
 
 	http.Handle(
